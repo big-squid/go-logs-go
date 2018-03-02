@@ -218,7 +218,7 @@ func (logger *logFormatter) Log(formatter Formatter, severity int, format string
 }
 
 func greyString(format string, args ...interface{}) string {
-	return fmt.Sprintf("\x1b[90;1m%s\x1b[0m", fmt.Sprintf(format, args...))
+	return "\x1b[90;1m" + fmt.Sprintf(format, args...) + "\x1b[0m"
 }
 
 func (logger *logFormatter) Trace(format string, args ...interface{}) {
