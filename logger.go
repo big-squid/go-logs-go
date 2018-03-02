@@ -186,7 +186,6 @@ func (logger *logFormatter) Level() int {
 }
 
 func (logger *logFormatter) New(label string) Logger {
-  label = fmt.Sprintf("%s.%s", logger.label, label)
 	level := configLogLevel(logger.level, logger.logConfig, label)
 
 	return &logFormatter{

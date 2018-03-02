@@ -61,7 +61,7 @@ func TestConfigB(test *testing.T) {
     test.Error("Expected log level to be INFO for `main`")
   }
 
-  logger = logger.New("test")
+  logger = logger.New("main.test")
   if logger.Level() != FATAL {
     test.Error("Expected log level to be FATAL for `main.test`")
   }
