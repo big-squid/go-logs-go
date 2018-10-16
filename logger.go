@@ -12,14 +12,14 @@ import (
 
 // Log constants
 const (
-  ALL = 1 << 32 - 1
-  TRACE = 600
+	ALL   = 1<<32 - 1
+	TRACE = 600
 	DEBUG = 500
 	INFO  = 400
 	WARN  = 300
 	ERROR = 200
 	FATAL = 100
-  OFF = 0
+	OFF   = 0
 )
 
 type Formatter func(string, ...interface{}) string
@@ -28,16 +28,16 @@ type Logger interface {
 	New(label string) Logger
 	Method(methodName string) Logger
 	Log(formatter Formatter, severity int, format string, args ...interface{})
-  Trace(format string, args ...interface{})
+	Trace(format string, args ...interface{})
 	Debug(format string, args ...interface{})
 	Info(format string, args ...interface{})
 	Warn(format string, args ...interface{})
 	Error(format string, args ...interface{})
 	Fatal(format string, args ...interface{})
-  LoadConfig(config LogConfig) error
-  FileConfig(logFile string) error
-  JsonConfig(data []byte) error
-  EnvConfig(env string) error
+	LoadConfig(config LogConfig) error
+	FileConfig(logFile string) error
+	JsonConfig(data []byte) error
+	EnvConfig(env string) error
 	Level() int
 }
 
@@ -53,18 +53,18 @@ type logFormatter struct {
 }
 
 func levelLabel(level int) string {
-  if level >= TRACE {
-    return "TRACE"
-  } else if level >= DEBUG {
-    return "DEBUG"
-  } else if level >= INFO {
-		return "INFO "
+	if level >= TRACE {
+		return "TRACE"
+	} else if level >= DEBUG {
+		return "DEBUG"
+	} else if level >= INFO {
+		return "INFO"
 	} else if level >= WARN {
-		return "WARN "
+		return "WARN"
 	} else if level >= ERROR {
 		return "ERROR"
-  } else if level >= FATAL {
-    return "FATAL"
+	} else if level >= FATAL {
+		return "FATAL"
 	} else {
 		return "OFF"
 	}
@@ -72,10 +72,10 @@ func levelLabel(level int) string {
 
 func labelLevel(label string) int {
 	switch label {
-  case "ALL":
-    return ALL
-  case "TRACE":
-    return TRACE
+	case "ALL":
+		return ALL
+	case "TRACE":
+		return TRACE
 	case "DEBUG":
 		return DEBUG
 	case "INFO":
@@ -86,8 +86,8 @@ func labelLevel(label string) int {
 		return ERROR
 	case "FATAL":
 		return FATAL
-  case "OFF":
-    return OFF
+	case "OFF":
+		return OFF
 	default:
 		panic(fmt.Sprintf("Unknown label `%s`", label))
 	}
@@ -131,53 +131,53 @@ func configLogLevel(defaultLevel int, config LogConfig, label string) int {
 }
 
 func (logger *logFormatter) LoadConfig(config LogConfig) error {
-  var level int
-  if config.Level != nil {
-    level = labelLevel(*config.Level)
-  }
+	var level int
+	if config.Level != nil {
+		level = labelLevel(*config.Level)
+	}
 
-  level = configLogLevel(level, config, logger.label)
-  logger.logConfig = config
-  logger.level = level
+	level = configLogLevel(level, config, logger.label)
+	logger.logConfig = config
+	logger.level = level
 
-  return nil
+	return nil
 }
 
 func (logger *logFormatter) JsonConfig(data []byte) error {
-  config := LogConfig{}
-  err := json.Unmarshal(data, &config)
-  if err != nil {
-    return err
-  }
+	config := LogConfig{}
+	err := json.Unmarshal(data, &config)
+	if err != nil {
+		return err
+	}
 
-  return logger.LoadConfig(config)
+	return logger.LoadConfig(config)
 }
 
 func (logger *logFormatter) FileConfig(configFile string) error {
-  data, err := ioutil.ReadFile(configFile)
-  if err != nil {
-    return err
-  }
+	data, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		return err
+	}
 
-  return logger.JsonConfig(data)
+	return logger.JsonConfig(data)
 }
 
 func (logger *logFormatter) EnvConfig(env string) error {
-  return logger.FileConfig(os.Getenv(env))
+	return logger.FileConfig(os.Getenv(env))
 }
 
 func New(label string, level int, logConfig *LogConfig) *logFormatter {
-  if logConfig == nil {
-    configLevel := levelLabel(level)
-    logConfig = &LogConfig{
-      Level: &configLevel,
-    }
-  }
+	if logConfig == nil {
+		configLevel := levelLabel(level)
+		logConfig = &LogConfig{
+			Level: &configLevel,
+		}
+	}
 
 	return &logFormatter{
-		label: label,
-		level: level,
-    logConfig: *logConfig,
+		label:     label,
+		level:     level,
+		logConfig: *logConfig,
 	}
 }
 
@@ -197,9 +197,9 @@ func (logger *logFormatter) New(label string) Logger {
 
 func (logger *logFormatter) Method(methodName string) Logger {
 	return &logFormatter{
-    label: fmt.Sprintf("%s.%s", logger.label, methodName),
-		level: logger.level,
-    logConfig: logger.logConfig,
+		label:     fmt.Sprintf("%s.%s", logger.label, methodName),
+		level:     logger.level,
+		logConfig: logger.logConfig,
 	}
 }
 
@@ -221,7 +221,7 @@ func greyString(format string, args ...interface{}) string {
 }
 
 func (logger *logFormatter) Trace(format string, args ...interface{}) {
-  logger.Log(greyString, TRACE, format, args...)
+	logger.Log(greyString, TRACE, format, args...)
 }
 
 func (logger *logFormatter) Debug(format string, args ...interface{}) {
