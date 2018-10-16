@@ -58,9 +58,9 @@ func levelLabel(level int) string {
 	} else if level >= DEBUG {
 		return "DEBUG"
 	} else if level >= INFO {
-		return "INFO "
+		return "INFO"
 	} else if level >= WARN {
-		return "WARN "
+		return "WARN"
 	} else if level >= ERROR {
 		return "ERROR"
 	} else if level >= FATAL {
