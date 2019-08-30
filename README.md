@@ -1,6 +1,15 @@
 ## Installation
 
-`gb vendor fetch github.com/big-squid/go-logging`
+As outlined in [https://blog.golang.org/using-go-modules](https://blog.golang.org/using-go-modules) add
+
+```go
+import (
+  ...
+  "github.com/big-squid/go-logging"
+  ...
+)
+```
+to your project and run `go mod tidy` or a build.
 
 ## Examples
 
@@ -8,7 +17,7 @@
 package main
 
 import (
-  "github.com/big-squid/logging"
+  "github.com/big-squid/go-logging"
 )
 
 var logger logging.Logger
