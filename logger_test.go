@@ -1,50 +1,120 @@
-package logging
+package logging_test
 
 import (
 	"bufio"
 	"bytes"
 	"log"
 	"os"
-	"strings"
 	"testing"
+
+	logging "github.com/big-squid/go-logging"
 )
 
 const logEnv = "LOG_CONFIG"
 
 func TestNew(test *testing.T) {
-	// Make sure the constructor works just fine.
-	logger := New("main", DEBUG, nil)
+	cfg := logging.RootLogConfig{
+		Label: "testnew",
+		Level: logging.All,
+	}
+	// Make sure the constructor works.
+	logger := logging.New(&cfg)
 
-	// Just run everything to make sure no errors occur.
-	logger.Info("info")
-	logger.Debug("debug")
-	logger.Warn("warn")
-	logger.Error("error")
+	// The default LogHandler uses log.Output, so we can call
+	// log.SetOutput to capture our log messages in a bytes.Buffer
+	// Redirect output to a custom writer so we can verify log messages get
+	// through, are formatted as expected, and are omitted when the message's
+	// level is lower than the logger's level.
+	var buffer bytes.Buffer
+	writer := bufio.NewWriter(&buffer)
+	log.SetOutput(writer)
+	// Turn off date and time logging for our test - otherwise logs strings
+	// change with the time
+	flags := log.Flags()
+	defer func() {
+		// Restore flags (although test is ending)
+		log.SetFlags(flags)
+	}()
+	log.SetFlags(0)
+
+	expectedAllOut := `TRACE [testnew]: A trace log message
+DEBUG [testnew]: A debug log message
+INFO [testnew]: An info log message
+WARN [testnew]: A warn log message
+ERROR [testnew]: A error log message
+`
+
+	// Run everything to make sure no errors occur.
+	logger.Trace("A trace log message")
+	logger.Debug("A debug log message")
+	logger.Info("An info log message")
+	logger.Warn("A warn log message")
+	logger.Error("A error log message")
+
+	if logger.Level() != logging.All {
+		test.Error("Expected log level to be All for `testnew`")
+	}
+
+	writer.Flush()
+	actualAllOut := buffer.String()
+	if actualAllOut != expectedAllOut {
+		test.Errorf("Did not receive expected log messages for `testnew`:\n%s\nShould be:\n%s", actualAllOut, expectedAllOut)
+	}
+
+	// reset the buffer for a second test
+	buffer.Reset()
+
+	// Make sure the constructor works with defaults.
+	defaultLogger := logging.New(&logging.RootLogConfig{})
+	if defaultLogger.Level() != logging.Info {
+		test.Error("Expected log level to be Info for default root logger")
+	}
+
+	// Run everything to make sure no errors occur.
+	// We should not see the Trace and Debug messages.
+	expectedInfoOut := `INFO: An info log message
+WARN: A warn log message
+ERROR: A error log message
+`
+
+	defaultLogger.Trace("A trace log message")
+	defaultLogger.Debug("A debug log message")
+	defaultLogger.Info("An info log message")
+	defaultLogger.Warn("A warn log message")
+	defaultLogger.Error("A error log message")
+
+	writer.Flush()
+	actualInfoOut := buffer.String()
+	if actualInfoOut != expectedInfoOut {
+		test.Errorf("Did not receive expected log messages for default root logger:\n%s\nShould be:\n%s", actualInfoOut, expectedInfoOut)
+	}
 }
 
 // This will test that the root config is honored.
 func TestConfigA(test *testing.T) {
-	var logger Logger
-	logger = New("main", DEBUG, nil)
-	logger.JsonConfig([]byte(`
-    { "level": "INFO"
-    }
-  `))
-	if logger.Level() != INFO {
+	jsonCfg, err := logging.JsonConfig([]byte(`
+	{ "level": "INFO",
+	  "label": "main"
+	}
+`))
+	if nil != err {
+		test.Errorf("Error preparing RootLogConfig with logging.JsonConfig(): %s", err)
+	}
+	logger := logging.New(jsonCfg)
+
+	if logger.Level() != logging.Info {
 		test.Error("Expected log level to be INFO for `main`")
 	}
 
-	logger = logger.New("main.test")
-	if logger.Level() != INFO {
+	logger = logger.ChildLogger("test")
+	if logger.Level() != logging.Info {
 		test.Error("Expected log level to be INFO for `main.test`")
 	}
 }
 
 func TestConfigB(test *testing.T) {
-	var logger Logger
-	logger = New("main", DEBUG, nil)
-	logger.JsonConfig([]byte(`
-    { "level": "ERROR",
+	jsonCfg, err := logging.JsonConfig([]byte(`
+	{ "level": "ERROR",
       "loggers": {
         "main": {
           "level": "INFO",
@@ -56,23 +126,32 @@ func TestConfigB(test *testing.T) {
         }
       }
     }
-  `))
-
-	if logger.Level() != INFO {
+`))
+	if nil != err {
+		test.Errorf("Error preparing RootLogConfig with logging.JsonConfig(): %s", err)
+	}
+	rootLogger := logging.New(jsonCfg)
+	if rootLogger.Level() != logging.Error {
 		test.Error("Expected log level to be INFO for `main`")
 	}
 
-	logger = logger.New("main.test")
-	if logger.Level() != FATAL {
+	mainLogger := rootLogger.ChildLogger("main")
+	if mainLogger.Level() != logging.Info {
+		test.Error("Expected log level to be INFO for `main`")
+	}
+
+	testChildLogger := mainLogger.ChildLogger("test")
+	if testChildLogger.Level() != logging.Fatal {
 		test.Error("Expected log level to be FATAL for `main.test`")
 	}
 }
 
 func TestEnvPrefixConfig(test *testing.T) {
 
-	os.Setenv("LOGGER_TEST_LEVEL", "INFO")
+	os.Setenv("LOGGER_TEST_LEVEL", "TRACE")
+	os.Setenv("LOGGER_TEST_LABEL", "main")
 	os.Setenv("LOGGER_TEST_LOGGERS__CHILD__LEVEL", "DEBUG")
-	os.Setenv("LOGGER_TEST_LOGGERS__CHILD__GRANDCHILD__LEVEL", "TRACE")
+	os.Setenv("LOGGER_TEST_LOGGERS__CHILD__GRANDCHILD__LEVEL", "INFO")
 	os.Setenv("LOGGER_TEST_LOGGERS__JSON_CHILD", `{
 		"level": "WARN",
 		"loggers": {
@@ -88,54 +167,33 @@ func TestEnvPrefixConfig(test *testing.T) {
 		os.Unsetenv("LOGGER_TEST_LOGGERS__JSON_CHILD")
 	}()
 
-	var logger Logger
-	logger = New("main", DEBUG, nil)
-	logger.EnvPrefixConfig("LOGGER_TEST")
+	envCfg, err := logging.EnvPrefixConfig("LOGGER_TEST")
+	if nil != err {
+		test.Errorf("Error preparing RootLogConfig with logging.EnvPrefixConfig(): %s", err)
+	}
+	rootLogger := logging.New(envCfg)
 
-	if logger.Level() != INFO {
-		test.Error("Expected log level to be INFO for `main`")
+	if rootLogger.Level() != logging.Trace {
+		test.Error("Expected log level to be TRACE for `main`")
 	}
 
-	child := logger.New("child")
-	if child.Level() != DEBUG {
+	child := rootLogger.ChildLogger("child")
+	if child.Level() != logging.Debug {
 		test.Error("Expected log level to be DEBUG for `main.child`")
 	}
 
-	grandchild := child.New("grandchild")
-	if grandchild.Level() != TRACE {
-		grandchild.Error("Expected log level to be TRACE for `main.child.grandchild`")
+	grandchild := child.ChildLogger("grandchild")
+	if grandchild.Level() != logging.Info {
+		grandchild.Error("Expected log level to be Info for `main.child.grandchild`")
 	}
 
-	jsonchild := logger.New("jsonChild")
-	if jsonchild.Level() != WARN {
+	jsonchild := rootLogger.ChildLogger("jsonChild")
+	if jsonchild.Level() != logging.Warn {
 		test.Error("Expected log level to be WARN for `main.jsonChild`")
 	}
 
-	jsongrandchild := jsonchild.New("grandchild")
-	if jsongrandchild.Level() != ERROR {
+	jsongrandchild := jsonchild.ChildLogger("grandchild")
+	if jsongrandchild.Level() != logging.Error {
 		test.Error("Expected log level to be ERROR for `main.jsonChild.grandchild`")
-	}
-}
-
-func TestLogLevel(test *testing.T) {
-	logger := New("main", INFO, nil)
-
-	var buffer bytes.Buffer
-	writer := bufio.NewWriter(&buffer)
-	log.SetOutput(writer)
-	// Redirect output to this stream.
-	logger.Info("hello")
-	writer.Flush()
-
-	if !strings.Contains(buffer.String(), "hello") {
-		test.Errorf("Expected log message `%s` to contain `hello`", buffer.String())
-	}
-
-	buffer.Reset()
-	logger.Debug("debug msg")
-	writer.Flush()
-
-	if strings.Contains(buffer.String(), "debug msg") {
-		test.Errorf("Expected log message `%s` to omit `debug msg` but the message still got through.", buffer.String())
 	}
 }

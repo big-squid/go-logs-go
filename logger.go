@@ -11,218 +11,290 @@ import (
 	"github.com/fatih/color"
 )
 
-// Log constants
+var defaultLeveledLogHandler LeveledLogHandler
+var LogLevels orderedLogLevels
+
+func init() {
+	LogLevels = orderedLogLevels{
+		order: []LogLevel{
+			All,
+			Trace,
+			Debug,
+			Info,
+			Warn,
+			Error,
+			Fatal,
+			Off,
+		},
+		labels: map[LogLevel]string{
+			All:   "ALL",
+			Trace: "TRACE",
+			Debug: "DEBUG",
+			Info:  "INFO",
+			Warn:  "WARN",
+			Error: "ERROR",
+			Fatal: "FATAL",
+			Off:   "OFF",
+		},
+	}
+	defaultLeveledLogHandler = LeveledLogHandler{
+		Format:     "%s [%s]: %s",
+		RootFormat: "%s: %s",
+		Levels: map[LogLevel]Formatter{
+			Trace: greyString,
+			Debug: greyString,
+			Info:  color.WhiteString,
+			Warn:  color.YellowString,
+			Error: color.RedString,
+			Fatal: color.RedString,
+		},
+	}
+}
+
+type LogLevel int
+
+func (ll *LogLevel) UnmarshalJSON(b []byte) error {
+	var i interface{}
+	if err := json.Unmarshal(b, &i); err != nil {
+		return err
+	}
+
+	switch i.(type) {
+	case int:
+		ord := i.(int)
+		if ord > 0 && ord < len(LogLevels.order) {
+			*ll = LogLevel(ord)
+		}
+		return nil
+	case string:
+		label := strings.ToUpper(i.(string))
+		level, ok := LogLevels.Level(label)
+		if ok {
+			*ll = level
+			return nil
+		}
+	case nil:
+		*ll = NotSet
+	default:
+		// Do nothing. We'll be returning an error
+	}
+
+	return fmt.Errorf("Invalid JSON value for LogLevel %s", i)
+}
+
+// Log Constants
+// NotSet is literally our "zero value"
+// NOTE: go does _not_ recommend using ALL_CAPS for constants, as these
+// would always be exported (see https://stackoverflow.com/questions/22688906/go-naming-conventions-for-const)
 const (
-	ALL   = 1<<32 - 1
-	TRACE = 600
-	DEBUG = 500
-	INFO  = 400
-	WARN  = 300
-	ERROR = 200
-	FATAL = 100
-	OFF   = 0
+	NotSet LogLevel = iota
+	All
+	Trace
+	Debug
+	Info
+	Warn
+	Error
+	Fatal
+	Off
 )
+
+// log levels should have an inherent limited set and order that the set of all ints does not provide
+// By declaring a struct we get:
+//  - the order in the struct is the order of the level (assuming linting does not reorder)
+//  - a namespace for methods
+//  - a place to hide the memoization of ordinals
+// We still don't get the type checking of the limited set of possible values
+// that a proper enum would provide, but hopefully in practice that won't be too
+// problematic.
+type orderedLogLevels struct {
+	order         []LogLevel
+	labels        map[LogLevel]string
+	indexCache    map[LogLevel]int
+	ordinalsCache map[string]LogLevel
+}
+
+func (ll *orderedLogLevels) Label(level LogLevel) string {
+	return ll.labels[level]
+}
+
+func (ll *orderedLogLevels) Level(label string) (LogLevel, bool) {
+	if nil == ll.ordinalsCache {
+		ll.ordinalsCache = make(map[string]LogLevel)
+	}
+
+	lvl, ok := ll.ordinalsCache[label]
+	if ok {
+		return lvl, true
+	}
+
+	for k, v := range ll.labels {
+		if v == label {
+			ll.ordinalsCache[label] = k
+			return k, true
+		}
+	}
+
+	return NotSet, false
+}
+
+func (ll *orderedLogLevels) Index(level LogLevel) (int, bool) {
+	if nil == ll.indexCache {
+		ll.indexCache = make(map[LogLevel]int)
+	}
+
+	i, ok := ll.indexCache[level]
+	if ok {
+		return i, true
+	}
+
+	for i, v := range ll.order {
+		if v == level {
+			ll.indexCache[level] = i
+			return i, true
+		}
+	}
+
+	return 0, false
+}
+
+func (ll *orderedLogLevels) Next(level LogLevel) (LogLevel, bool) {
+	idx, ok := ll.Index(level)
+	if ok {
+		next := idx + 1
+		if next < len(ll.order) {
+			return ll.order[next], true
+		}
+	}
+	return NotSet, false
+}
+
+func (ll *orderedLogLevels) Previous(level LogLevel) (LogLevel, bool) {
+	idx, ok := ll.Index(level)
+	if ok {
+		prev := idx - 1
+		if prev > 0 {
+			return ll.order[prev], true
+		}
+	}
+	return NotSet, false
+}
+
+// LogMessage structs will be passed by the logger to the configured LogHandler
+// each time a logging function (`.Trace()`, `.Debug()`,`.Info()`,`.Warn()`,
+// `.Error()`) is called.
+type LogMessage struct {
+	Level      LogLevel
+	LevelLabel string
+	Logger     string
+	Message    string
+}
+
+// LogHandler receives a LogMessage and ensures it is properly written to the logs.
+// Most consumers of this package will want to use the DefaultLogHandler to write
+// color coded log messages to stdout with timestamps.
+type LogHandler func(LogMessage)
+
+// DefaultLogHandler is a LogHandler that writes color coded log messages to stdout with
+// UTC timestamps.
+func DefaultLogHandler(msg LogMessage) {
+	defaultLeveledLogHandler.LogHandler(msg)
+}
 
 type Formatter func(string, ...interface{}) string
 
-// TODO: Consider changing the API of this module to have several utilities
-// for generating a LogConfig and a simple constructor that takes a LogConfig.
-// Modifying anything but the the root logger's config or even the root
-// logger's config after initialization adds a great deal of complexity with
-// very little utility.
+type LeveledLogHandler struct {
+	Format     string
+	RootFormat string
+	Levels     map[LogLevel]Formatter
+}
 
-type Logger interface {
-	New(label string) Logger
-	Method(methodName string) Logger
-	Log(formatter Formatter, severity int, format string, args ...interface{})
-	Trace(format string, args ...interface{})
-	Debug(format string, args ...interface{})
-	Info(format string, args ...interface{})
-	Warn(format string, args ...interface{})
-	Error(format string, args ...interface{})
-	Fatal(format string, args ...interface{})
-	LoadConfig(config LogConfig) error
-	FileConfig(logFile string) error
-	JsonConfig(data []byte) error
-	EnvConfig(env string) error
-	EnvPrefixConfig(prefix string) error
-	Level() int
+func (h *LeveledLogHandler) LogHandler(msg LogMessage) {
+	var levelFn Formatter
+	lvl := msg.Level
+	for {
+		levelFn := h.Levels[lvl]
+		if nil != levelFn {
+			break
+		}
+		prev, ok := LogLevels.Previous(lvl)
+		if !ok {
+			break
+		}
+		lvl = prev
+	}
+
+	if nil == levelFn {
+		// TODO: find the Formatter for the next lower log level
+		levelFn = fmt.Sprintf
+	}
+
+	if len(h.RootFormat) > 0 && len(msg.Logger) == 0 {
+		log.Println(levelFn(
+			h.RootFormat,
+			strings.ToUpper(msg.LevelLabel),
+			msg.Message,
+		))
+		return
+	}
+
+	log.Println(levelFn(
+		h.Format,
+		strings.ToUpper(msg.LevelLabel),
+		msg.Logger,
+		msg.Message,
+	))
+}
+
+// greyString is a private method supporting the DefaultLogHandler
+func greyString(format string, args ...interface{}) string {
+	return "\x1b[90;1m" + fmt.Sprintf(format, args...) + "\033[0m"
+}
+
+type RootLogConfig struct {
+	Loggers map[string]*LogConfig `json:"loggers"`
+	Level   LogLevel              `json:"level"`
+	Label   string                `json:"label"`
+	// Don't try to Marshall/Unmarshall a function
+	LogHandler LogHandler `json:"-"`
 }
 
 type LogConfig struct {
 	Loggers map[string]*LogConfig `json:"loggers"`
-	Level   *string               `json:"level"`
+	Level   LogLevel              `json:"level"`
 }
 
-type logFormatter struct {
-	parent            *logFormatter
-	isSubLabledLogger bool
-	label             string
-	level             int
-	logConfig         LogConfig
-}
-
-func levelLabel(level int) string {
-	if level >= TRACE {
-		return "TRACE"
-	} else if level >= DEBUG {
-		return "DEBUG"
-	} else if level >= INFO {
-		return "INFO"
-	} else if level >= WARN {
-		return "WARN"
-	} else if level >= ERROR {
-		return "ERROR"
-	} else if level >= FATAL {
-		return "FATAL"
-	} else {
-		return "OFF"
-	}
-}
-
-func labelLevel(label string) int {
-	switch label {
-	case "ALL":
-		return ALL
-	case "TRACE":
-		return TRACE
-	case "DEBUG":
-		return DEBUG
-	case "INFO":
-		return INFO
-	case "WARN":
-		return WARN
-	case "ERROR":
-		return ERROR
-	case "FATAL":
-		return FATAL
-	case "OFF":
-		return OFF
-	default:
-		panic(fmt.Sprintf("Unknown label `%s`", label))
-	}
-}
-
-// findConfig searches for the labeled config by checking in the parent loggers'
-// configs until one is found or we run our of parent loggers.
-func findConfig(logger *logFormatter, label string, isSubLabel bool) (*LogConfig, bool) {
-	lookupkey := label
-
-	if isSubLabel {
-		lookupkey = fmt.Sprintf("%s.%s", logger.label, label)
-	}
-
-	if cfg, ok := configForLabel(logger.logConfig, lookupkey); ok {
-		return cfg, true
-	}
-
-	if nil == logger.parent {
-		return nil, false
-	}
-
-	return findConfig(logger.parent, lookupkey, logger.isSubLabledLogger)
-}
-
-func configForLabel(config LogConfig, label string) (*LogConfig, bool) {
-	parts := strings.Split(label, ".")
-	if len(parts) == 0 {
-		return nil, false
-	}
-
-	head := parts[0]
-	childConfig, ok := config.Loggers[head]
-	if !ok {
-		return nil, false
-	}
-	// If we have a nil config named exactly for what we were looking for
-	// it's probably _very_ deliberate; we will return (nil, true).
-	if len(parts) == 1 {
-		return childConfig, true
-	}
-	if childConfig == nil {
-		return nil, false
-	}
-
-	return configForLabel(*childConfig, strings.Join(parts[1:], "."))
-}
-
-func (logger *logFormatter) LoadConfig(config LogConfig) error {
-	var level int
-	if nil != logger.parent {
-		log.Println(
-			fmt.Sprintf(
-				"WARNING (Deprecated): it is not advised to call LoadConfig() on child logger `%s`",
-				logger.label,
-			),
-		)
-	}
-
-	// Set the config first
-	logger.logConfig = config
-
-	// NOTE: LoadConfig() has some surprising behavior. If you load a config
-	// (as JSON) that looks like:
-	// { "level": "ERROR",
-	//   "loggers": {
-	//     "main": {
-	//       "level": "INFO",
-	//       "loggers": {
-	//         "test": {
-	//           "level": "FATAL"
-	//         }
-	//       }
-	//     }
-	//   }
-	// }
-	// and your logger's label is "main", it's log level should be INFO, but
-	// any loggers created with logger.New() - since they don't have an entry
-	// under "loggers" - should get the root log level of ERROR.
-
-	if namedConfig, ok := findConfig(logger, logger.label, logger.isSubLabledLogger); ok {
-		// If we've got it in the namedConfig, assign the log level explicitly
-		level = labelLevel(*namedConfig.Level)
-	} else if config.Level != nil {
-		// If we've got it, assign the log level explicitly
-		level = labelLevel(*config.Level)
-	} else if nil != logger.parent {
-		// Default to the parent's log level if we have not set one
-		// Not passing in a log level means "reset to default"
-		level = logger.parent.level
-	} else {
-		// If we also don't have a parent, use the default of INFO
-		// Not passing in a log level means "reset to default"
-		level = INFO
-	}
-
-	logger.level = level
-
-	return nil
-}
-
-func (logger *logFormatter) JsonConfig(data []byte) error {
-	config := LogConfig{}
+// JsonConfig creates a RootLogConfig from JSON data
+func JsonConfig(data []byte) (*RootLogConfig, error) {
+	config := RootLogConfig{}
 	err := json.Unmarshal(data, &config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return logger.LoadConfig(config)
+	return &config, nil
 }
 
-func (logger *logFormatter) FileConfig(configFile string) error {
+// FileConfig reads a file path and creates a RootLogConfig from it's JSON data
+func FileConfig(configFile string) (*RootLogConfig, error) {
 	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return logger.JsonConfig(data)
+	return JsonConfig(data)
 }
 
-func (logger *logFormatter) EnvConfig(env string) error {
-	return logger.FileConfig(os.Getenv(env))
+// PathEnvConfig gets a file path from the specified environment variable, reads it's contents
+// and creates a RootLogConfig from it's JSON data
+func PathEnvConfig(env string) (*RootLogConfig, error) {
+	return FileConfig(os.Getenv(env))
 }
 
-func (logger *logFormatter) EnvPrefixConfig(prefix string) error {
+// EnvPrefixConfig finds all the environment variables that start with a specified prefix
+// and uses them to build a RootLogConfig. After the prefix, a single underscore ("_")
+// is treated as a word seperator. Two successive underscores ("__") are treated as
+// a struct seperator - the left side is the parent struct, the right is a field name.
+func EnvPrefixConfig(prefix string) (*RootLogConfig, error) {
 	cfg := make(map[string]interface{})
 
 	for _, envpair := range os.Environ() {
@@ -280,128 +352,141 @@ func (logger *logFormatter) EnvPrefixConfig(prefix string) error {
 
 	config, err := json.Marshal(cfg)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	log.Println(fmt.Sprintf("JSON config from Env: %s", config))
-
-	return logger.JsonConfig(config)
+	return JsonConfig(config)
 }
 
-// New has a confusing API because it allows setting the log level
-// and the log config - which may contradict one another.
-func New(label string, level int, logConfig *LogConfig) *logFormatter {
+// Logger is the primary structure in this package. It supplies the log level functions.
+// A Logger only has a `parent` if it was created by Logger.ChildLogger(). If so, it's
+// `logConfig` will be a reference to it's config from the parent - the only place it
+// can get a config.
+type Logger struct {
+	parent     *Logger
+	logConfig  *LogConfig
+	label      string
+	logHandler LogHandler
+}
+
+// New returns a new root Logger
+func New(logConfig *RootLogConfig) *Logger {
 	if logConfig == nil {
-		configLevel := levelLabel(level)
-		logConfig = &LogConfig{
-			Level: &configLevel,
-		}
+		logConfig = &RootLogConfig{}
 	}
 
-	logger := &logFormatter{
+	if logConfig.Level == NotSet {
+		// Default to the INFO log level
+		logConfig.Level = Info
+	}
+
+	if len(logConfig.Label) < 1 {
+		// Explicitly default the Label to the empty string
+		logConfig.Label = ""
+	}
+
+	if logConfig.LogHandler == nil {
+		// Default to the INFO log level
+		logConfig.LogHandler = DefaultLogHandler
+	}
+
+	logger := &Logger{
 		parent: nil,
-		label:  label,
-		level:  level,
-	}
-
-	logger.LoadConfig(*logConfig)
-	if logger.level != level {
-		log.Println(
-			fmt.Sprintf(
-				"WARNING: level passed for logger `%s` directly does not match level in config that was also passed",
-				logger.label,
-			),
-		)
+		logConfig: &LogConfig{
+			Loggers: logConfig.Loggers,
+			Level:   logConfig.Level,
+		},
+		label:      logConfig.Label,
+		logHandler: logConfig.LogHandler,
 	}
 
 	return logger
 }
 
-func (logger *logFormatter) Level() int {
-	return logger.level
+func (logger *Logger) Level() LogLevel {
+	return logger.logConfig.Level
 }
 
-func (logger *logFormatter) New(label string) Logger {
-	config, ok := findConfig(logger, label, false)
-	if nil == config {
+func (logger *Logger) Label() string {
+	return logger.label
+}
+
+func (logger *Logger) ChildLogger(name string) *Logger {
+	if len(name) < 1 {
+		panic(fmt.Errorf("Child loggers require a name"))
+	}
+
+	if strings.Contains(name, ".") {
+		panic(fmt.Errorf("Child logger name should not contain '.'"))
+	}
+
+	config, ok := logger.logConfig.Loggers[name]
+	if !ok || nil == config {
 		config = &LogConfig{}
 	}
 
-	var level int
-	if ok && config.Level != nil {
-		level = labelLevel(*config.Level)
-	} else {
-		level = logger.level
+	if config.Level == NotSet {
+		config.Level = logger.logConfig.Level
 	}
 
-	return &logFormatter{
-		parent:    logger,
-		label:     label,
-		level:     level,
-		logConfig: *config,
+	parts := []string{}
+	if len(logger.label) > 1 {
+		parts = append(parts, logger.label)
 	}
-}
+	parts = append(parts, name)
+	label := strings.Join(parts, ".")
 
-func (logger *logFormatter) Method(methodName string) Logger {
-	config, ok := findConfig(logger, methodName, true)
-	if nil == config {
-		config = &LogConfig{}
-	}
-
-	var level int
-	if ok && config.Level != nil {
-		level = labelLevel(*config.Level)
-	} else {
-		level = logger.level
-	}
-
-	return &logFormatter{
-		parent:            logger,
-		isSubLabledLogger: true,
-		label:             fmt.Sprintf("%s.%s", logger.label, methodName),
-		level:             level,
-		logConfig:         *config,
+	return &Logger{
+		parent:     logger,
+		logConfig:  config,
+		label:      label,
+		logHandler: logger.logHandler,
 	}
 }
 
-func (logger *logFormatter) Log(formatter Formatter, severity int, format string, args ...interface{}) {
-	if severity > logger.level {
+// log is a private method that supports all of the exported log level
+// methods
+func (logger *Logger) log(level LogLevel, format string, args ...interface{}) {
+	if level < logger.Level() {
 		return
 	}
 
-	levelLabel := levelLabel(severity)
-	msg := fmt.Sprintf("%s [%s]: %s", levelLabel, logger.label, fmt.Sprintf(format, args...))
-	if formatter != nil {
-		msg = formatter(msg)
-	}
-	log.Println(msg)
+	msg := fmt.Sprintf(format, args...)
+	logger.logHandler(LogMessage{
+		Level:      level,
+		LevelLabel: LogLevels.Label(level),
+		Logger:     logger.Label(),
+		Message:    msg,
+	})
 }
 
-func greyString(format string, args ...interface{}) string {
-	return "\x1b[90;1m" + fmt.Sprintf(format, args...) + "\033[0m"
+// Trace logs a message at the TRACE level
+func (logger *Logger) Trace(format string, args ...interface{}) {
+	logger.log(Trace, format, args...)
 }
 
-func (logger *logFormatter) Trace(format string, args ...interface{}) {
-	logger.Log(greyString, TRACE, format, args...)
+// Debug logs a message at the DEBUG level
+func (logger *Logger) Debug(format string, args ...interface{}) {
+	logger.log(Debug, format, args...)
 }
 
-func (logger *logFormatter) Debug(format string, args ...interface{}) {
-	logger.Log(greyString, DEBUG, format, args...)
+// Info logs a message at the INFO level
+func (logger *Logger) Info(format string, args ...interface{}) {
+	logger.log(Info, format, args...)
 }
 
-func (logger *logFormatter) Info(format string, args ...interface{}) {
-	logger.Log(color.WhiteString, INFO, format, args...)
+// Warn logs a message at the WARN level
+func (logger *Logger) Warn(format string, args ...interface{}) {
+	logger.log(Warn, format, args...)
 }
 
-func (logger *logFormatter) Warn(format string, args ...interface{}) {
-	logger.Log(color.YellowString, WARN, format, args...)
+// Error logs a message at the ERROR level
+func (logger *Logger) Error(format string, args ...interface{}) {
+	logger.log(Error, format, args...)
 }
 
-func (logger *logFormatter) Error(format string, args ...interface{}) {
-	logger.Log(color.RedString, ERROR, format, args...)
-}
-
-func (logger *logFormatter) Fatal(format string, args ...interface{}) {
-	logger.Log(color.RedString, FATAL, format, args...)
+// Fatal logs a message at the FATAL level and then calls panic()
+func (logger *Logger) Fatal(format string, args ...interface{}) {
+	logger.log(Fatal, format, args...)
 	panic("FATAL")
 }
