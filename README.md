@@ -69,9 +69,17 @@ This example demonstrates the basic usage of a `go-logging` logger:
 **NOTE**: There is no exported generic `Log()` method. You must use a log level.
 **NOTE**: `Fatal()` will call `panic("FATAL")` after logging it's message. This is an extreme measure - though it can be caught and does allow deferred code to run. It's use is generally discouraged.
 
+### Config-only Log Levels
+
+Astute observes will notice 3 `LogLevel` constants that do not map to a log level function. These are use only for configuration. They are:
+
+1. `logging.All` - this indicates that **all** log messages should be written to the logs
+2. `logging.Off` - this indicates that **no** log messages should be written to the logs
+3. `logging.NotSet` - this indicates that a log level has not been set for a given logger and the logger should inherit it's parent's log level or use the default `logging.Info` if no parent exists. This log level is the "zero value" for the `LogLevel` constants.
+
 ### Ways to get a RootLogConfig
 
-It's very unlikely that you actually want to hard code your log configuration. `go-logging` provides several methods for retrieving a configuration from outside the code:
+It's very unlikely that you actually want to hard code your log configuration. `go-logging` provides several methods for retrieving a configuration from outside the code. Log levels should be set using the case insensitive string equivalent of the constant name.
 
 #### JsonConfig
 
