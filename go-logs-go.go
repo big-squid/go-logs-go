@@ -1,4 +1,4 @@
-package logging
+package gologsgo
 
 import (
 	"encoding/json"
@@ -23,7 +23,6 @@ func init() {
 			Info,
 			Warn,
 			Error,
-			Fatal,
 			Off,
 		},
 		labels: map[LogLevel]string{
@@ -33,7 +32,6 @@ func init() {
 			Info:  "INFO",
 			Warn:  "WARN",
 			Error: "ERROR",
-			Fatal: "FATAL",
 			Off:   "OFF",
 		},
 	}
@@ -46,7 +44,6 @@ func init() {
 			Info:  color.WhiteString,
 			Warn:  color.YellowString,
 			Error: color.RedString,
-			Fatal: color.RedString,
 		},
 	}
 }
@@ -94,7 +91,6 @@ const (
 	Info
 	Warn
 	Error
-	Fatal
 	Off
 )
 
@@ -358,6 +354,16 @@ func EnvPrefixConfig(prefix string) (*RootLogConfig, error) {
 	return JsonConfig(config)
 }
 
+// TODO: Implement a NamedConfig method that takes defaults, searches for files in the
+// current working directory, etc/, and ~/, uses environment vairables, and parses CLI args
+
+// TODO: Implement an optional channel as part of the RootLogConfig on which to receive updated
+// RootLogConfig instances so log levels can be updated via Redis or some other means that
+// didn't entail a restart. This enables turning on debug or trace level logging for a code path
+// that is exhibiting errors.
+
+// TODO: implement a PackageLogger interface that allows targetting a logger in configuration by package name
+
 // Logger is the primary structure in this package. It supplies the log level functions.
 // A Logger only has a `parent` if it was created by Logger.ChildLogger(). If so, it's
 // `logConfig` will be a reference to it's config from the parent - the only place it
@@ -483,10 +489,4 @@ func (logger *Logger) Warn(format string, args ...interface{}) {
 // Error logs a message at the ERROR level
 func (logger *Logger) Error(format string, args ...interface{}) {
 	logger.log(Error, format, args...)
-}
-
-// Fatal logs a message at the FATAL level and then calls panic()
-func (logger *Logger) Fatal(format string, args ...interface{}) {
-	logger.log(Fatal, format, args...)
-	panic("FATAL")
 }

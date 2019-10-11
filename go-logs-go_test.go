@@ -1,4 +1,4 @@
-package logging_test
+package gologsgo_test
 
 import (
 	"bufio"
@@ -7,18 +7,18 @@ import (
 	"os"
 	"testing"
 
-	logging "github.com/big-squid/go-logging"
+	logs "github.com/big-squid/go-logs-go"
 )
 
 const logEnv = "LOG_CONFIG"
 
 func TestNew(test *testing.T) {
-	cfg := logging.RootLogConfig{
+	cfg := logs.RootLogConfig{
 		Label: "testnew",
-		Level: logging.All,
+		Level: logs.All,
 	}
 	// Make sure the constructor works.
-	logger := logging.New(&cfg)
+	logger := logs.New(&cfg)
 
 	// The default LogHandler uses log.Output, so we can call
 	// log.SetOutput to capture our log messages in a bytes.Buffer
@@ -51,7 +51,7 @@ ERROR [testnew]: A error log message
 	logger.Warn("A warn log message")
 	logger.Error("A error log message")
 
-	if logger.Level() != logging.All {
+	if logger.Level() != logs.All {
 		test.Error("Expected log level to be All for `testnew`")
 	}
 
@@ -65,8 +65,8 @@ ERROR [testnew]: A error log message
 	buffer.Reset()
 
 	// Make sure the constructor works with defaults.
-	defaultLogger := logging.New(&logging.RootLogConfig{})
-	if defaultLogger.Level() != logging.Info {
+	defaultLogger := logs.New(&logs.RootLogConfig{})
+	if defaultLogger.Level() != logs.Info {
 		test.Error("Expected log level to be Info for default root logger")
 	}
 
@@ -92,7 +92,7 @@ ERROR: A error log message
 
 // This will test that the root config is honored.
 func TestConfigA(test *testing.T) {
-	jsonCfg, err := logging.JsonConfig([]byte(`
+	jsonCfg, err := logs.JsonConfig([]byte(`
 	{ "level": "INFO",
 	  "label": "main"
 	}
@@ -100,27 +100,27 @@ func TestConfigA(test *testing.T) {
 	if nil != err {
 		test.Errorf("Error preparing RootLogConfig with logging.JsonConfig(): %s", err)
 	}
-	logger := logging.New(jsonCfg)
+	logger := logs.New(jsonCfg)
 
-	if logger.Level() != logging.Info {
+	if logger.Level() != logs.Info {
 		test.Error("Expected log level to be INFO for `main`")
 	}
 
 	logger = logger.ChildLogger("test")
-	if logger.Level() != logging.Info {
+	if logger.Level() != logs.Info {
 		test.Error("Expected log level to be INFO for `main.test`")
 	}
 }
 
 func TestConfigB(test *testing.T) {
-	jsonCfg, err := logging.JsonConfig([]byte(`
+	jsonCfg, err := logs.JsonConfig([]byte(`
 	{ "level": "ERROR",
       "loggers": {
         "main": {
           "level": "INFO",
           "loggers": {
             "test": {
-              "level": "FATAL"
+              "level": "DEBUG"
             }
           }
         }
@@ -130,19 +130,19 @@ func TestConfigB(test *testing.T) {
 	if nil != err {
 		test.Errorf("Error preparing RootLogConfig with logging.JsonConfig(): %s", err)
 	}
-	rootLogger := logging.New(jsonCfg)
-	if rootLogger.Level() != logging.Error {
+	rootLogger := logs.New(jsonCfg)
+	if rootLogger.Level() != logs.Error {
 		test.Error("Expected log level to be INFO for `main`")
 	}
 
 	mainLogger := rootLogger.ChildLogger("main")
-	if mainLogger.Level() != logging.Info {
+	if mainLogger.Level() != logs.Info {
 		test.Error("Expected log level to be INFO for `main`")
 	}
 
 	testChildLogger := mainLogger.ChildLogger("test")
-	if testChildLogger.Level() != logging.Fatal {
-		test.Error("Expected log level to be FATAL for `main.test`")
+	if testChildLogger.Level() != logs.Debug {
+		test.Error("Expected log level to be DEBUG for `main.test`")
 	}
 }
 
@@ -167,33 +167,33 @@ func TestEnvPrefixConfig(test *testing.T) {
 		os.Unsetenv("LOGGER_TEST_LOGGERS__JSON_CHILD")
 	}()
 
-	envCfg, err := logging.EnvPrefixConfig("LOGGER_TEST")
+	envCfg, err := logs.EnvPrefixConfig("LOGGER_TEST")
 	if nil != err {
-		test.Errorf("Error preparing RootLogConfig with logging.EnvPrefixConfig(): %s", err)
+		test.Errorf("Error preparing RootLogConfig with logs.EnvPrefixConfig(): %s", err)
 	}
-	rootLogger := logging.New(envCfg)
+	rootLogger := logs.New(envCfg)
 
-	if rootLogger.Level() != logging.Trace {
+	if rootLogger.Level() != logs.Trace {
 		test.Error("Expected log level to be TRACE for `main`")
 	}
 
 	child := rootLogger.ChildLogger("child")
-	if child.Level() != logging.Debug {
+	if child.Level() != logs.Debug {
 		test.Error("Expected log level to be DEBUG for `main.child`")
 	}
 
 	grandchild := child.ChildLogger("grandchild")
-	if grandchild.Level() != logging.Info {
+	if grandchild.Level() != logs.Info {
 		grandchild.Error("Expected log level to be Info for `main.child.grandchild`")
 	}
 
 	jsonchild := rootLogger.ChildLogger("jsonChild")
-	if jsonchild.Level() != logging.Warn {
+	if jsonchild.Level() != logs.Warn {
 		test.Error("Expected log level to be WARN for `main.jsonChild`")
 	}
 
 	jsongrandchild := jsonchild.ChildLogger("grandchild")
-	if jsongrandchild.Level() != logging.Error {
+	if jsongrandchild.Level() != logs.Error {
 		test.Error("Expected log level to be ERROR for `main.jsonChild.grandchild`")
 	}
 }

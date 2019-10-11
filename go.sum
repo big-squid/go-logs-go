@@ -1,3 +1,5 @@
+github.com/big-squid/go-logging v0.0.2 h1:xfb6UBf/5MdvDwt/Y79c/NKJyyf1tnN8OWjuw4Btvng=
+github.com/big-squid/go-logging v0.0.2/go.mod h1:hynwIqA77ZYPggtuxKFXkN4qjt9LstypKz8vtdAHPts=
 github.com/fatih/color v1.6.0 h1:66qjqZk8kalYAvDRtM1AdAJQI0tj4Wrue3Eq3B3pmFU=
 github.com/fatih/color v1.6.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/mattn/go-colorable v0.0.0-20180205070158-7dc3415be66d h1:Al+xYJObawpVYdtjyHMfT4sOTkbtbAYbV/Q0Qf0/JQs=

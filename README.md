@@ -1,3 +1,7 @@
+# Go Logs Go
+
+A leveled logger for go with targeted configuration.
+
 ## Installation
 
 As outlined in [https://blog.golang.org/using-go-modules](https://blog.golang.org/using-go-modules) add
@@ -5,7 +9,7 @@ As outlined in [https://blog.golang.org/using-go-modules](https://blog.golang.or
 ```go
 import (
   ...
-  "github.com/big-squid/go-logging"
+  "github.com/big-squid/go-logs-go"
   ...
 )
 ```
@@ -19,18 +23,18 @@ to your project and run `go mod tidy` or a build.
 package main
 
 import (
-  logging "github.com/big-squid/go-logging"
+  logs "github.com/big-squid/go-logs-go"
 )
 
-var logger logging.Logger
+var logger logs.Logger
 
 func init() {
-  logger = logging.New(logging.RootLogConfig{
+  logger = logs.New(logs.RootLogConfig{
 		Label: "main",
-    Level: logging.Debug,
+    Level: logs.Debug,
     Loggers: {
       "counter": &LogConfig{
-        Level: logging.Info
+        Level: logs.Info
       },
     }
 	}
@@ -54,28 +58,25 @@ func main() {
 }
 ```
 
-This example demonstrates the basic usage of a `go-logging` logger:
+This example demonstrates the basic usage of a `go-logs-go` logger:
 
-1. A Logger is created using `logger.New()`
-2. `logger.New()` takes a `*RootLogConfig{}` that specifies
+1. A root Logger is created using `logs.New()`
+2. `logs.New()` takes a `*RootLogConfig{}` that specifies
   + a log `Level` indicating which log messages should be written to the logs
   + an optional `Label` to include in all log messages
   + optional child logger configuration `Loggers` in a `map[string]*LogConfig`
 3. Child loggers may be created using `logger.ChildLogger()`, which requires a name. The name will be used to:
   + create a label, by appending it to the parent logger's label
   + find the child logger's configuration in it's parent logger's `Logger's` map. The logger's `Level` _may_ be supplied in this configuration. If not, the parent logger's level will be used.
-4. Loggers export log level functions for logging at a particular level. Log level functions exist for `Trace()`, `Debug()`, `Info()`, `Warn()`, `Error()`, and `Fatal()`. Each of these will generate a log message at the log level that matches their name _if_ the logger's level is less than or equal to that level.
-
-**NOTE**: There is no exported generic `Log()` method. You must use a log level.
-**NOTE**: `Fatal()` will call `panic("FATAL")` after logging it's message. This is an extreme measure - though it can be caught and does allow deferred code to run. It's use is generally discouraged.
+4. Loggers export log level functions for logging at a particular level. Log level functions exist for `Trace()`, `Debug()`, `Info()`, `Warn()`, and `Error()`. Each of these will generate a log message at the log level that matches their name _if_ the logger's level is less than or equal to that level.
 
 ### Config-only Log Levels
 
 Astute observes will notice 3 `LogLevel` constants that do not map to a log level function. These are use only for configuration. They are:
 
-1. `logging.All` - this indicates that **all** log messages should be written to the logs
-2. `logging.Off` - this indicates that **no** log messages should be written to the logs
-3. `logging.NotSet` - this indicates that a log level has not been set for a given logger and the logger should inherit it's parent's log level or use the default `logging.Info` if no parent exists. This log level is the "zero value" for the `LogLevel` constants.
+1. `logs.All` - this indicates that **all** log messages should be written to the logs
+2. `logs.Off` - this indicates that **no** log messages should be written to the logs
+3. `logs.NotSet` - this indicates that a log level has not been set for a given logger and the logger should inherit it's parent's log level or use the default `logs.Info` if no parent exists. This log level is the "zero value" for the `LogLevel` constants.
 
 ### Ways to get a RootLogConfig
 
@@ -103,7 +104,7 @@ if nil != err {
   panic(err)
 }
 
-logger := logging.New(cfg)
+logger := logs.New(cfg)
 ```
 
 `JsonConfig()` takes JSON as a `[]byte` and Marshalls it in to a `*RootLogConfig`. It is used by the other configuration functions.
@@ -113,24 +114,24 @@ logger := logging.New(cfg)
 `FileConfig()` reads a file path and creates a `*RootLogConfig{}` from it's json data
 
 ```go
-cfg, err := logging.FileConfig("./log-config.json")
+cfg, err := logs.FileConfig("./log-config.json")
 if nil != err {
   panic(err)
 }
 
-logger := logging.New(cfg)
+logger := logs.New(cfg)
 ```
 
 #### PathEnvConfig
 `PathEnvConfig()` gets a file path from the specified environment variable, reads it's contents and creates a `*RootLogConfig` from it's json data
 
 ```go
-cfg, err := logging.PathEnvConfig("LOG_CONFIG_PATH")
+cfg, err := logs.PathEnvConfig("LOG_CONFIG_PATH")
 if nil != err {
   panic(err)
 }
 
-logger := logging.New(cfg)
+logger := logs.New(cfg)
 ```
 
 #### EnvPrefixConfig
@@ -143,18 +144,18 @@ logger := logging.New(cfg)
 // LOG_CONFIG_LOGGERS__CHILD__GRANDCHILD__LEVEL="TRACE"
 // LOG_CONFIG_LOGGERS__JSON_CHILD="{\"level\": \"WARN\", \"loggers\": {\"grandchild\": {\"level\": \"ERROR\"}}}"
   
-cfg, err := logging.EnvPrefixConfig("LOG_CONFIG")
+cfg, err := logs.EnvPrefixConfig("LOG_CONFIG")
 if nil != err {
   panic(err)
 }
 
-logger := logging.New(cfg)
+logger := logs.New(cfg)
 ```
 
 ### Advanced Usage
 
-It is possible to further customize the logs written by a `go-logging` logger as well as where and how they are written by specifying a `LogHandler` function. For now, interested parties should review the implementation of the `DefaultLogHandler` in the source code.
+It is possible to further customize the logs written by a `go-logs-go` logger as well as where and how they are written by specifying a `LogHandler` function. For now, interested parties should review the implementation of the `DefaultLogHandler` in the source code.
 
 #### Shhh! Don't tell anyone!
 
-Of particular note, the `DefaultLogHandler` uses [`log.PrintLn()`](https://golang.org/pkg/log/#Println) to write log messages. (This is how our log output contains timestamps without them being included in the `LogMessage` struct.) Using the base `"log"` package in this way allows the user to make use of [`log.SetOutput()`](https://golang.org/pkg/log/#SetOutput) and [`log.SetFlags()`](https://golang.org/pkg/log/#SetFlags) if desired - though this is considered a private implementation detail. Users who want backward compatibility guarantees should implement their own LogHandler instead.
+Of particular note, the `DefaultLogHandler` uses [`log.PrintLn()`](https://golang.org/pkg/log/#Println) to write log messages. (This is how our log output contains timestamps without them being included in the `LogMessage` struct.) Using the base `"log"` package in this way allows the user to make use of [`log.SetOutput()`](https://golang.org/pkg/log/#SetOutput) and [`log.SetFlags()`](https://golang.org/pkg/log/#SetFlags) if desired - though this is considered a private implementation detail. Users who want backward compatibility guarantees should implement their own `LogHandler` instead.
