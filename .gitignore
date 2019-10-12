@@ -7,7 +7,6 @@
 pkg/
 vendor/src/
 secrets
-src/testshit/
 
 # User-specific files
 **.swp
@@ -291,3 +290,5 @@ __pycache__/
 local-env
 
 .vsCode/
+
+/vendor
