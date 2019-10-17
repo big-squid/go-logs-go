@@ -424,10 +424,12 @@ func New(logConfig *RootLogConfig) Logger {
 	return logger
 }
 
+// Level returns the effective log level of the Logger below which log messages will be ignored
 func (logger *Logger) Level() LogLevel {
 	return logger.logConfig.Level
 }
 
+// Label returns the label of the logger
 func (logger *Logger) Label() string {
 	return logger.label
 }
@@ -479,6 +481,13 @@ func (logger *Logger) ChildLogger(name string) Logger {
 	return child
 }
 
+// PackageLoggerOpts allows callers of PackageLogger() to specify options. Currently
+// the only supportted option is Skip, which tells PackageLogger() to skip additional
+// stack frames that shouldn't be included when determining the calling package path.
+type PackageLoggerOpts struct {
+	Skip int
+}
+
 // PackageLogger returns a ChildLogger using the basename of the package path of the
 // caller as the name. This allows targetting a package logger in configuration by
 // package name. It is recommended that PackageLogger() only be used when initializing
@@ -487,16 +496,23 @@ func (logger *Logger) ChildLogger(name string) Logger {
 // the actual package name (see https://golang.org/pkg/runtime/#example_Frames), but
 // for well-named packages (see https://blog.golang.org/package-names) should be the
 // same.
-func (logger *Logger) PackageLogger() Logger {
+func (logger *Logger) PackageLogger(opts ...PackageLoggerOpts) Logger {
 	// get the package of the caller...
 	// https://golang.org/pkg/runtime/#example_Frames
+
+	options := PackageLoggerOpts{
+		Skip: 0,
+	}
+	for _, o := range opts {
+		options.Skip = o.Skip
+	}
 
 	caller := ""
 	// Get up to 10 frames so we have a few opportunities to find the package of the
 	// calling function.
 	pc := make([]uintptr, 10)
 	// 0 is runtime.Callers, 1 is gologsgo.PackageLogger, 2 is the first one we want
-	n := runtime.Callers(2, pc)
+	n := runtime.Callers(2+options.Skip, pc)
 	if n > 0 {
 		// Trim our list to the actual number of program counters we got
 		pc = pc[:n]
