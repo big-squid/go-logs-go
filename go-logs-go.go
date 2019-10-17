@@ -390,7 +390,7 @@ type Logger struct {
 }
 
 // New returns a new root Logger
-func New(logConfig *RootLogConfig) *Logger {
+func New(logConfig *RootLogConfig) Logger {
 	if logConfig == nil {
 		logConfig = &RootLogConfig{}
 	}
@@ -410,7 +410,7 @@ func New(logConfig *RootLogConfig) *Logger {
 		logConfig.LogHandler = DefaultLogHandler
 	}
 
-	logger := &Logger{
+	logger := Logger{
 		parent: nil,
 		logConfig: &LogConfig{
 			Loggers: logConfig.Loggers,
@@ -435,7 +435,7 @@ func (logger *Logger) Label() string {
 // ChildLogger returns a Logger that takes it's configuration from the Logger it was created
 // from. ChildLogger's are named so that configuration can be applied specifically to them.
 // The name of a ChildLogger is also used in it's label along with it's parent's label.
-func (logger *Logger) ChildLogger(name string) *Logger {
+func (logger *Logger) ChildLogger(name string) Logger {
 	if len(name) < 1 {
 		panic(fmt.Errorf("Child loggers require a name"))
 	}
@@ -476,7 +476,7 @@ func (logger *Logger) ChildLogger(name string) *Logger {
 		logger.children[name] = child
 	}
 
-	return &child
+	return child
 }
 
 // PackageLogger returns a ChildLogger using the basename of the package path of the
@@ -487,7 +487,7 @@ func (logger *Logger) ChildLogger(name string) *Logger {
 // the actual package name (see https://golang.org/pkg/runtime/#example_Frames), but
 // for well-named packages (see https://blog.golang.org/package-names) should be the
 // same.
-func (logger *Logger) PackageLogger() *Logger {
+func (logger *Logger) PackageLogger() Logger {
 	// get the package of the caller...
 	// https://golang.org/pkg/runtime/#example_Frames
 
