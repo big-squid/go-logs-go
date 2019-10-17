@@ -197,3 +197,33 @@ func TestEnvPrefixConfig(test *testing.T) {
 		test.Error("Expected log level to be ERROR for `main.jsonChild.grandchild`")
 	}
 }
+
+// TestPackageLogger will test that config is honored for a PackageLogger.
+func TestPackageLogger(test *testing.T) {
+	jsonCfg, err := logs.JsonConfig([]byte(`
+	{ "level": "INFO",
+	  "loggers": {
+        "go-logs-go_test": {
+          "level": "DEBUG"
+        }
+      }
+	}
+`))
+	if nil != err {
+		test.Errorf("Error preparing RootLogConfig with logging.JsonConfig(): %s", err)
+	}
+	logger := logs.New(jsonCfg)
+
+	if logger.Level() != logs.Info {
+		test.Error("Expected log level to be INFO for `main`")
+	}
+
+	pkglogger := logger.PackageLogger()
+	if pkglogger.Level() != logs.Debug {
+		test.Errorf("Expected log level to be DEBUG (%v) for package logger. Found: %v", logs.Debug, pkglogger.Level())
+	}
+
+	if pkglogger.Label() != "go-logs-go_test" {
+		test.Errorf("Expected log label to be go-logs-go_test for package logger. Found: %v", pkglogger.Label())
+	}
+}

@@ -6,13 +6,28 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/fatih/color"
 )
 
 var defaultLeveledLogHandler LeveledLogHandler
 var LogLevels orderedLogLevels
+
+// We only extract the basename of the package path - not the full package path
+// or declared package name. This may change in a future version as it allows for
+// package name collisions, but, for a logger label, is deemed acceptable.
+var pkgFromCaller = regexp.MustCompile(`(.*/)?([^./]+)\.[^/]+?$`)
+
+// This simple mutex is for creating ChildLoggers so we can reuse them and
+// be concurrency safe. It is a bit simplistic and means that creating or
+// obtaining a ChildLogger creates a synchronization point across all loggers
+// - which could be a problem if you like to create ChildLogger instance per
+// Method - so this may be refined in the future.
+var childlock sync.Mutex
 
 func init() {
 	LogLevels = orderedLogLevels{
@@ -362,8 +377,6 @@ func EnvPrefixConfig(prefix string) (*RootLogConfig, error) {
 // didn't entail a restart. This enables turning on debug or trace level logging for a code path
 // that is exhibiting errors.
 
-// TODO: implement a PackageLogger interface that allows targetting a logger in configuration by package name
-
 // Logger is the primary structure in this package. It supplies the log level functions.
 // A Logger only has a `parent` if it was created by Logger.ChildLogger(). If so, it's
 // `logConfig` will be a reference to it's config from the parent - the only place it
@@ -373,6 +386,7 @@ type Logger struct {
 	logConfig  *LogConfig
 	label      string
 	logHandler LogHandler
+	children   map[string]Logger
 }
 
 // New returns a new root Logger
@@ -404,6 +418,7 @@ func New(logConfig *RootLogConfig) *Logger {
 		},
 		label:      logConfig.Label,
 		logHandler: logConfig.LogHandler,
+		children:   make(map[string]Logger),
 	}
 
 	return logger
@@ -417,6 +432,9 @@ func (logger *Logger) Label() string {
 	return logger.label
 }
 
+// ChildLogger returns a Logger that takes it's configuration from the Logger it was created
+// from. ChildLogger's are named so that configuration can be applied specifically to them.
+// The name of a ChildLogger is also used in it's label along with it's parent's label.
 func (logger *Logger) ChildLogger(name string) *Logger {
 	if len(name) < 1 {
 		panic(fmt.Errorf("Child loggers require a name"))
@@ -426,28 +444,87 @@ func (logger *Logger) ChildLogger(name string) *Logger {
 		panic(fmt.Errorf("Child logger name should not contain '.'"))
 	}
 
-	config, ok := logger.logConfig.Loggers[name]
-	if !ok || nil == config {
-		config = &LogConfig{}
+	// memoize ChildLogger instances so we don't keep creating them over and over again
+	childlock.Lock()
+	defer childlock.Unlock()
+	child, ok := logger.children[name]
+	if !ok {
+		config, ok := logger.logConfig.Loggers[name]
+		if !ok || nil == config {
+			config = &LogConfig{}
+		}
+
+		if config.Level == NotSet {
+			config.Level = logger.logConfig.Level
+		}
+
+		parts := []string{}
+		if len(logger.label) > 1 {
+			parts = append(parts, logger.label)
+		}
+		parts = append(parts, name)
+		label := strings.Join(parts, ".")
+
+		child = Logger{
+			parent:     logger,
+			logConfig:  config,
+			label:      label,
+			logHandler: logger.logHandler,
+			children:   make(map[string]Logger),
+		}
+
+		logger.children[name] = child
 	}
 
-	if config.Level == NotSet {
-		config.Level = logger.logConfig.Level
+	return &child
+}
+
+// PackageLogger returns a ChildLogger using the basename of the package path of the
+// caller as the name. This allows targetting a package logger in configuration by
+// package name. It is recommended that PackageLogger() only be used when initializing
+// a package.
+// NOTE: the basename of the package path is more readily available at runtime than
+// the actual package name (see https://golang.org/pkg/runtime/#example_Frames), but
+// for well-named packages (see https://blog.golang.org/package-names) should be the
+// same.
+func (logger *Logger) PackageLogger() *Logger {
+	// get the package of the caller...
+	// https://golang.org/pkg/runtime/#example_Frames
+
+	caller := ""
+	// Get up to 10 frames so we have a few opportunities to find the package of the
+	// calling function.
+	pc := make([]uintptr, 10)
+	// 0 is runtime.Callers, 1 is gologsgo.PackageLogger, 2 is the first one we want
+	n := runtime.Callers(2, pc)
+	if n > 0 {
+		// Trim our list to the actual number of program counters we got
+		pc = pc[:n]
+		frames := runtime.CallersFrames(pc)
+
+		// Loop to get frames.
+		// A fixed number of pcs can expand to an indefinite number of Frames.
+		for {
+			frame, more := frames.Next()
+
+			// We go until we get a non-empty string from frame.Function
+			// or run out of frames
+			caller = frame.Function
+			if len(caller) > 0 || !more {
+				break
+			}
+		}
 	}
 
-	parts := []string{}
-	if len(logger.label) > 1 {
-		parts = append(parts, logger.label)
+	// If caller is still an empty string, we have an error
+	if len(caller) == 0 {
+		panic(fmt.Errorf("Unable to identify package of calling function"))
 	}
-	parts = append(parts, name)
-	label := strings.Join(parts, ".")
 
-	return &Logger{
-		parent:     logger,
-		logConfig:  config,
-		label:      label,
-		logHandler: logger.logHandler,
-	}
+	// TODO: extract the package from the caller string
+	pkgname := pkgFromCaller.ReplaceAllString(caller, "$2")
+
+	return logger.ChildLogger(pkgname)
 }
 
 // log is a private method that supports all of the exported log level
