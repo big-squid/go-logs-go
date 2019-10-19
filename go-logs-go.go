@@ -323,7 +323,7 @@ func EnvPrefixConfig(prefix string) (*RootLogConfig, error) {
 						strings.Split(
 							strings.Title(
 								strings.ToLower(
-									strings.ReplaceAll(k, "_", " "),
+									strings.Replace(k, "_", " ", -1), // replace all
 								),
 							),
 							" ",
@@ -386,11 +386,11 @@ type Logger struct {
 	logConfig  *LogConfig
 	label      string
 	logHandler LogHandler
-	children   map[string]Logger
+	children   map[string]*Logger
 }
 
 // New returns a new root Logger
-func New(logConfig *RootLogConfig) Logger {
+func New(logConfig *RootLogConfig) *Logger {
 	if logConfig == nil {
 		logConfig = &RootLogConfig{}
 	}
@@ -410,7 +410,7 @@ func New(logConfig *RootLogConfig) Logger {
 		logConfig.LogHandler = DefaultLogHandler
 	}
 
-	logger := Logger{
+	logger := &Logger{
 		parent: nil,
 		logConfig: &LogConfig{
 			Loggers: logConfig.Loggers,
@@ -418,7 +418,7 @@ func New(logConfig *RootLogConfig) Logger {
 		},
 		label:      logConfig.Label,
 		logHandler: logConfig.LogHandler,
-		children:   make(map[string]Logger),
+		children:   make(map[string]*Logger),
 	}
 
 	return logger
@@ -437,13 +437,16 @@ func (logger *Logger) Label() string {
 // ChildLogger returns a Logger that takes it's configuration from the Logger it was created
 // from. ChildLogger's are named so that configuration can be applied specifically to them.
 // The name of a ChildLogger is also used in it's label along with it's parent's label.
-func (logger *Logger) ChildLogger(name string) Logger {
+func (logger *Logger) ChildLogger(name string) *Logger {
 	if len(name) < 1 {
 		panic(fmt.Errorf("Child loggers require a name"))
 	}
 
 	if strings.Contains(name, ".") {
-		panic(fmt.Errorf("Child logger name should not contain '.'"))
+		parts := strings.SplitN(name, ".", 2)
+		fmt.Println(fmt.Sprintf("Debugging Parts: %s", parts))
+		parent := logger.ChildLogger(parts[0])
+		return parent.ChildLogger(parts[1])
 	}
 
 	// memoize ChildLogger instances so we don't keep creating them over and over again
@@ -467,12 +470,12 @@ func (logger *Logger) ChildLogger(name string) Logger {
 		parts = append(parts, name)
 		label := strings.Join(parts, ".")
 
-		child = Logger{
+		child = &Logger{
 			parent:     logger,
 			logConfig:  config,
 			label:      label,
 			logHandler: logger.logHandler,
-			children:   make(map[string]Logger),
+			children:   make(map[string]*Logger),
 		}
 
 		logger.children[name] = child
@@ -496,7 +499,7 @@ type PackageLoggerOpts struct {
 // the actual package name (see https://golang.org/pkg/runtime/#example_Frames), but
 // for well-named packages (see https://blog.golang.org/package-names) should be the
 // same.
-func (logger *Logger) PackageLogger(opts ...PackageLoggerOpts) Logger {
+func (logger *Logger) PackageLogger(opts ...PackageLoggerOpts) *Logger {
 	// get the package of the caller...
 	// https://golang.org/pkg/runtime/#example_Frames
 

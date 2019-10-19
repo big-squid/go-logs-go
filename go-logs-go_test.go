@@ -144,6 +144,11 @@ func TestConfigB(test *testing.T) {
 	if testChildLogger.Level() != logs.Debug {
 		test.Error("Expected log level to be DEBUG for `main.test`")
 	}
+
+	testChildLogger2 := rootLogger.ChildLogger("main.test")
+	if testChildLogger != testChildLogger2 {
+		test.Error("Expected `main.test` logger to be cached and retrievable")
+	}
 }
 
 func TestEnvPrefixConfig(test *testing.T) {
