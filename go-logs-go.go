@@ -444,7 +444,6 @@ func (logger *Logger) ChildLogger(name string) *Logger {
 
 	if strings.Contains(name, ".") {
 		parts := strings.SplitN(name, ".", 2)
-		fmt.Println(fmt.Sprintf("Debugging Parts: %s", parts))
 		parent := logger.ChildLogger(parts[0])
 		return parent.ChildLogger(parts[1])
 	}
