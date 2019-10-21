@@ -250,6 +250,64 @@ func TestEnvPrefixConfig(test *testing.T) {
 	}
 }
 
+func TestEnvPrefixConfigJSONOnly(test *testing.T) {
+	os.Setenv("LOGGER_JSON_TEST", `{
+		"level": "TRACE",
+		"label": "main",
+		"loggers": {
+			"child": {
+				"level": "DEBUG",
+				"loggers": {
+					"grandchild": {
+						"level": "INFO"
+					}
+				}
+			},
+			"child2": {
+				"level": "WARN",
+				"loggers": {
+					"grandchild": {
+						"level": "ERROR"
+					}
+				}
+			}
+		}
+	}`)
+	defer func() {
+		os.Unsetenv("LOGGER_JSON_TEST")
+	}()
+
+	envCfg, err := logs.EnvPrefixConfig("LOGGER_JSON_TEST")
+	if nil != err {
+		test.Errorf("Error preparing RootLogConfig with logs.EnvPrefixConfig(): %s", err)
+	}
+	rootLogger := logs.New(envCfg)
+
+	if rootLogger.Level() != logs.Trace {
+		test.Error("Expected log level to be TRACE for `main`")
+	}
+
+	child := rootLogger.ChildLogger("child")
+	if child.Level() != logs.Debug {
+		test.Error("Expected log level to be DEBUG for `main.child`")
+	}
+
+	grandchild := child.ChildLogger("grandchild")
+	if grandchild.Level() != logs.Info {
+		grandchild.Error("Expected log level to be Info for `main.child.grandchild`")
+	}
+
+	child2 := rootLogger.ChildLogger("child2")
+	if child2.Level() != logs.Warn {
+		test.Error("Expected log level to be WARN for `main.child2`")
+	}
+
+	child2grandchild := child2.ChildLogger("grandchild")
+	if child2grandchild.Level() != logs.Error {
+		test.Error("Expected log level to be ERROR for `main.child2.grandchild`")
+	}
+}
+
 // TestPackageLogger will test that config is honored for a PackageLogger.
 func TestPackageLogger(test *testing.T) {
 	jsonCfg, err := logs.JsonConfig([]byte(`
