@@ -23,38 +23,37 @@ to your project and run `go mod tidy` or a build.
 package main
 
 import (
-  logs "github.com/big-squid/go-logs-go"
+	logs "github.com/big-squid/go-logs-go"
 )
 
-var logger logs.Logger
+var logger *logs.Logger
 
 func init() {
-  logger = logs.New(logs.RootLogConfig{
+	logger = logs.New(&logs.RootLogConfig{
 		Label: "main",
-    Level: logs.Debug,
-    Loggers: {
-      "counter": &LogConfig{
-        Level: logs.Info
-      },
-    }
-	}
+		Level: logs.Debug,
+		Loggers: map[string]*logs.LogConfig{
+			"counter": &logs.LogConfig{
+				Level: logs.Info,
+			},
+		},
+	})
 }
 
 func counter() {
-  log := logger.ChildLogger("counter")
-  for i := 0; i < 5; i++ {
-    log.Warn("Loop %v", i)
-  }
-  log.Fatal("done")
+	log := logger.ChildLogger("counter")
+	for i := 0; i < 5; i++ {
+		log.Warn("Loop %v", i)
+	}
 }
 
 func main() {
-  log := logger
-  log.Trace("This will only appear if the level is TRACE")
-  log.Debug("Debug msg")
-  log.Info("Info msg")
+	log := logger
+	log.Trace("This will only appear if the level is TRACE")
+	log.Debug("Debug msg")
+	log.Info("Info msg")
 
-  counter()
+	counter()
 }
 ```
 
