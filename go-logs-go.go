@@ -310,7 +310,7 @@ func EnvPrefixConfig(prefix string) (*RootLogConfig, error) {
 	// Support JSON in environment variable matching the prefix exactly
 	rootenvvalue := os.Getenv(prefix)
 	// Parse things that look like JSON
-	if []rune(rootenvvalue)[0] == []rune("{")[0] {
+	if len(rootenvvalue) > 0 && []rune(rootenvvalue)[0] == []rune("{")[0] {
 		err := json.Unmarshal([]byte(rootenvvalue), &cfg)
 		if err != nil {
 			log.Println(fmt.Sprintf("Unable to parse %s as JSON. %s\n%s", prefix, err, rootenvvalue))
