@@ -149,6 +149,53 @@ func TestConfigB(test *testing.T) {
 	if testChildLogger != testChildLogger2 {
 		test.Error("Expected `main.test` logger to be cached and retrievable")
 	}
+
+	var buffer bytes.Buffer
+	writer := bufio.NewWriter(&buffer)
+	log.SetOutput(writer)
+	// Turn off date and time logging for our test - otherwise logs strings
+	// change with the time
+	flags := log.Flags()
+	defer func() {
+		// Restore flags (although test is ending)
+		log.SetFlags(flags)
+	}()
+	log.SetFlags(0)
+
+	expectedCombinedOut := `ERROR: A error log message
+INFO [main]: An info log message
+WARN [main]: A warn log message
+ERROR [main]: A error log message
+DEBUG [main.test]: A debug log message
+INFO [main.test]: An info log message
+WARN [main.test]: A warn log message
+ERROR [main.test]: A error log message
+`
+
+	// Run everything to make sure no errors occur.
+	rootLogger.Trace("A trace log message")
+	rootLogger.Debug("A debug log message")
+	rootLogger.Info("An info log message")
+	rootLogger.Warn("A warn log message")
+	rootLogger.Error("A error log message")
+
+	mainLogger.Trace("A trace log message")
+	mainLogger.Debug("A debug log message")
+	mainLogger.Info("An info log message")
+	mainLogger.Warn("A warn log message")
+	mainLogger.Error("A error log message")
+
+	testChildLogger.Trace("A trace log message")
+	testChildLogger.Debug("A debug log message")
+	testChildLogger.Info("An info log message")
+	testChildLogger.Warn("A warn log message")
+	testChildLogger.Error("A error log message")
+
+	writer.Flush()
+	actualCombinedOut := buffer.String()
+	if actualCombinedOut != expectedCombinedOut {
+		test.Errorf("Did not receive expected log messages for configured root and child loggers:\n%s\nShould be:\n%s", actualCombinedOut, expectedCombinedOut)
+	}
 }
 
 func TestEnvPrefixConfig(test *testing.T) {
