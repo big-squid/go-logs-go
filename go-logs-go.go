@@ -307,6 +307,15 @@ func PathEnvConfig(env string) (*RootLogConfig, error) {
 // a struct seperator - the left side is the parent struct, the right is a field name.
 func EnvPrefixConfig(prefix string) (*RootLogConfig, error) {
 	cfg := make(map[string]interface{})
+	// Support JSON in environment variable matching the prefix exactly
+	rootenvvalue := os.Getenv(prefix)
+	// Parse things that look like JSON
+	if []rune(rootenvvalue)[0] == []rune("{")[0] {
+		err := json.Unmarshal([]byte(rootenvvalue), &cfg)
+		if err != nil {
+			log.Println(fmt.Sprintf("Unable to parse %s as JSON. %s\n%s", prefix, err, rootenvvalue))
+		}
+	}
 
 	for _, envpair := range os.Environ() {
 		fullprefix := fmt.Sprintf("%s_", prefix)
